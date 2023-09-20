@@ -1,0 +1,227 @@
+---
+title: "finalproject_script"
+output: html_document
+contribution: "Data Cleaning and Outlier Removal: Ammon Bhatti"
+              "Visualization: Runchen Liu"
+              "Statistical Analysis: Jayoung Kim"
+              "Interpretation and Reporting: Jong Wook Choe"
+---
+
+## Introduction
+
+Starting last year, a worldwide tragedy has occurred due to COVID-19. There are still various countries that struggle to fight pandemics. According to ABC News, on 13 May 2021, fourteen states already have at least 50% of their population having received at least one COVID-19 vaccine dose (ABC). Vermont, which currently leading the country in vaccinations, has seen the most significant percent change in its daily case average over the last four weeks, with a nearly 61% decline. It is almost an endpoint but also critical points where everyone's attention is needed. 
+The goal is to understand the current COVID-19 activity worldwide. Moreover, understanding the virus and how it spread. The first thing to do with the dataset is to analyze which country currently severe the most. Comparing the death rate of countries and continents will show the difference. Also, the purpose of this experiment is to explore trends seeing if there are significant increases in the number of confirmed cases. 
+
+## Summary of the data
+
+```{r,echo=FALSE}
+cov_data <- read.csv("/Users/Bosco/Desktop/SPRING2021/STA 141A/data/COVID-19 Cases.csv")
+head(cov_data)
+```
+
+The dataset is a repository for the daily counts of coronavirus, including confirmed, deaths, and recovered. It is sourced from Johns Hopkins University Center for Systems Science and Engineering (JHU CSSE), cleaned and organized by Tableau Inc.
+
+* Johns Hopkins's repo on GitHub: https://github.com/CSSEGISandData/COVID-19
+* COVID-19 Data Hub: https://www.tableau.com/covid-19-coronavirus-data-resources
+* COVID-19 Data Hub FAQ: https://www.tableau.com/about/blog/2020/3/coronavirus-data-hub-faq
+
+The data is reliable since the proper data cleaning process dataset ensures high quality of processed data and minimizes the risk of wrong or inaccurate conclusions. 
+
+```{r,echo=FALSE}
+#Remove all rows with a single NA or more in its columns.
+cov_clean <- cov_data[complete.cases(cov_data), ]
+print(head(cov_clean))
+cat("Number of rows in original dataset: ",nrow(cov_data), "\n")
+cat("Number of rows in all NA's removed dataset: ",nrow(cov_clean), "\n")
+
+cov_clean <- subset(cov_data,select=-c(FIPS,Lat,Long))
+```
+
+As you can see removing all of the rows that contain a single NA in them reduces the dataset to 540 rows from about a million. This is so because there are some columns that are mostly NA's. 
+
+The column People_Total_Tested_Count has 944622 NA's People_Hospitalized_Cumulative_Count has 944622 and FIPS has 100980 rows with NA's in them. We can ignore these columns altogether because they don't give us as much information as we would lose by removing the rows where they are NA's.
+
+```{r,echo=FALSE}
+library(lmtest)
+# indexing categorical variable
+index= which(cov_clean$Case_Type=="Confirmed") 
+cov_clean$Case_Type [index] = 1
+cov_clean$Case_Type [-index] = 0
+cov_clean$Case_Type <- as.numeric(cov_clean$Case_Type)
+
+# possible outlier
+md <- mahalanobis(cov_clean[,1:3], center = colMeans(cov_clean[,1:3]), cov = cov(cov_clean[,1:3]))
+alpha <- .01
+cutoff <- (qchisq(p = 1 - alpha, df = ncol(cov_clean)))
+names_outliers_MH <- which(md > cutoff)
+cov_clean <- cov_clean[-names_outliers_MH,]
+cov_clean
+
+# separating the dataset into deaths and confirmed cases
+cov_deaths <- cov_clean[cov_clean$Case_Type==1, ]
+cov_deaths
+cov_confirm <- cov_clean[cov_clean$Case_Type==0, ]
+
+# diagnostic
+model=lm(Difference~Case_Type+Cases,data=cov_clean)
+par(mfrow=c(2,2))
+plot1=plot(model)
+bptest(model)
+```
+
+For the diagnostic plots. We have 4 plots which are Residual vs Fitted plot,Normal Q-Q plot,scale-Location plot and Residuals vs Leverage Plot. We analyze them by their appearances.
+
+Lmtest results
+This test aims to test the homoskedasticity. We suppose the null hypothesis is homoskedasticity is true while the alternative hypothesis is that homoskedasticity is not true in this data. We can see that the p-value is close to 0. We reject our H0 and conclude that there is strong heteroskedasticity. This can also be observed directly in the second plot.
+
+1.Residuals vs Fitted Plot
+
+For this plot, we firstly check the linearity. As shown in the plot, the red line being close to the dash line indicates that the linearity is violated because it is not straight line. It is close to linearity but strictly not. Secondly,by checking the spread of residuals, we note the heteroskedasticity: as we move to the right on the x-axis, the spread of the residuals seems to be decreasing. In this case, the data has no unchanged variance. Third,we found out three special points 445059,420765 and 7850 which may be outliers with large residual values.To conclude, we observe the data and found that it is nonlinear,heteroskedastic and has three outliers.
+
+2.Normal Q-Q plot
+
+In the normal Q-Q plot, we are using it to check normalization. As the plot presents, the distribution has "heavy tails" versus a normal distribution. It presents that the points of the standardized residuals fall along in the middle but tend to curve off in the extremities. In this case, it means that the our cov_clean regression model have more extreme value than supposed.It is not normal distribution.
+
+3.Scale-Location Plot
+
+This plot is simplified residuals vs Fitted plot.In the plot, we see that the red line is curving instead of being horizontal.In this case,the average value of standardized residuals is increasing more than the function of the fitted values. Also, we check the spread of the points around the red line. The plot shows that the the magnitudes of the points are varying a lot-it is strictly increasing(also non-linearly).
+
+4.Residuals vs Leverage Plot
+
+This plot can also be used to test spread of standardized residuals.It proves our observations in the previous plots.We also observed that the standardized residuals points have high leverage. Due to this reason, we can conclude that the points may be influential. We decide not to deleting them because they would change the model a lot. 
+
+
+## Analysis
+
+A linear regression models requires that it's independent variables aren't highly correlated. In order to get the correlation we must first extract the numeric columns. 
+
+```{r,echo=FALSE,warning=FALSE}
+library(dplyr)
+library(ggplot2)
+cov_deaths_numeric <- select_if(cov_deaths, is.numeric)
+cov_confirm_numeric <- select_if(cov_confirm, is.numeric)
+
+corr_deaths <- round(cor(cov_deaths_numeric),2)
+corr_deaths
+corr_confirm <- round(cor(cov_confirm_numeric),2)
+corr_confirm
+```
+
+The correlation matrix shows that cases and differences are highly correlated. The other variables are less correlated and so they can be used in the linear regression modeling. This is because linear regression models can suffer from multicollinearity. An assumption of linear regression is that the variables are independent of each other. When you have high correlation between variables the effect of an independent variable on the dependent variable cannot be accurately gauged.
+
+```{r,echo=FALSE}
+library(rlang)
+library(dplyr)
+install.packages("ggbiplot")
+pca.death=princomp(x = cov_deaths_numeric, cor = TRUE,scores = TRUE)
+pca.death
+summary(pca.death, loadings = TRUE, cutoff = 0.2)
+pca.confirm=princomp(x = cov_confirm_numeric,scores = TRUE)
+summary(pca.confirm, loadings = TRUE, cutoff = 0.2)
+```
+
+(PCA summary)
+
+For covid death cases, the first principal component is strongly correlated with cases and differences. It increases with decreasing these two variables and this suggests that these two criteria vary together. If one decreases, then the remaining one tends to decrease as well. Furthermore, we see that the correlations of cases and differences are exactly the same values so we could state that the first principal component is evenly correlated with cases and differences. This suggests that less cases reported tends to have less people tested positive for each day. The second principal component increases with only one of the values, case type. This component can be viewed as a measure of how many people have confirmed cases and died due to covid-19. The third principal component increases with increasing cases and decreasing differences. It increases with increasing cases and decreasing differences. The loading of the principal components for covid death case shows that the first two principal components explain 93.7% of the total variance so it is enough for us to use the only first two principal components for the covid death case if we want to explain at least 90% of the total variability.
+ 
+The loading of the principal components for covid confirmed case shows different results. The first principal component is correlated with only one variable, the cases, and this represents that the first principal component increases with only increasing case scores. Since the correlation of cases is 0.999, it shows that the first principal mostly depends on cases. The second principal component also increases with only one of the values, differences. This component can be viewed as a measure of how people tested positive for each day. The third principal component increases with increasing case type. The loading of the principal components for covid confirmed case shows that the first two principal components explain 99.7% of the total variances. Therefore, if we want to explain at least 90% of the total variability, it is also enough for us to use only the first principal component for the covid confirmed case.
+
+```{r,echo=FALSE}
+summary(model)
+```
+
+(summary explanation)
+
+The formula for the linear regression model contains case type and cases as the predictor and differences as the response variable. Residuals are the difference between the actual observed response values and the predicted response values. The minimum and maximum of the residuals have a huge difference in their ranges but the median is close to zero so the distribution is not perfectly asymmetric but it is not too off on the plot.
+The coefficient Estimate contains the intercepts and slopes for both case type and cases. The intercepts are the expected value of how many people are tested positive for each day when we consider the case types and the number of the cases. The slopes for case type and cases have the how many people confirmed covid-19 based on the types and the number of cases. 
+The coefficient Standard Error measures the average amount that the coefficient estimates vary from the actual average value of the response variable. 
+The regression coefficient is positive so it represents that the independent variable has a positive statistical relationship with the dependent variable. A positive coefficient also indicates that as the value of the independent variable increases, the mean of the dependent variable also tends to increase.
+Since the p-values are nearly 0 which is less than the value of alpha, it is considered as a highly significant p-value. A small p-value indicates that it is unlikely we will observe a relationship between the predictor and response variables due to chance so the data provide enough evidence to reject the null hypothesis. Therefore, we conclude the alternative hypothesis is that there is a relationship between independent and dependent variables. Since the p-values for both case type and cases are nearly 0, it represents that they are statistically significant so we don't need to remove any of them to keep the precision of the model.
+Residual Standard Error is a measure of the quality of a linear regression fit. The actual differences based on case type and cases can deviate from the true regression line by approximately 7.404, on average. 
+The R-squared statistic provides a measure of how well the model is fitting the actual data. It is a proportion of variance and always between 0 and 1 when 0 represents a regression that does not explain the variance in the response variable well. The R-squared we got is 0.6357 and it is around 64% of the variance found in the response variable can be explained by the predictor variable. 
+The last part of the model summary shows F-statistics. It is a good indicator of whether there is a relationship between our predictor and the response variables. Since the further the F-statistic is from 1 the better it is, the F-statistic of our example is large enough. Therefore, the F-statistic is sufficient to reject the null hypothesis which is there is no relationship between differences, and case type and cases. 
+
+
+```{r,echo=FALSE}
+# when is the largest case occurred
+cov_clean$Date[which.max(cov_clean$Cases)]
+cov_clean$Country_Region[which.max(cov_clean$Cases)]
+# when is the biggest out break occurred
+cov_clean$Date[which.max(cov_clean$Difference)]
+cov_clean$Country_Region[which.max(cov_clean$Difference)]
+# How many people died and confirmed in each country
+peopld=aggregate(cov_deaths$Cases, list(cov_deaths$Country_Region), sum)
+peopld[order(peopld$x,decreasing = TRUE),]
+peoplc=aggregate(cov_confirm$Cases, list(cov_confirm$Country_Region), sum)
+peoplc[order(peoplc$x,decreasing = TRUE),]
+```
+
+According to data called cov_clean, the largest case occurred in Chile on April 13, 2020 and the biggest outbreak occurred in South Korea on March 5, 2020. Even though Chile experienced the largest case, it couldn't beat the number of people who died due to covid in the US. The US has relatively high numbers of people died due to covid-19 and the gap between US and China which are the first and second places in numbers of people died is more than two times of the number of people died in China. There are tons of people who died in many different countries but among them the US and China have significantly high numbers since the sum of the numbers of top 3 to 10 is way smaller than the numbers in US and China. All people confirmed covid-19 did not die. The rank switched the place of the US and China for the number of people confirmed covid-19. China has 189138 people who were confirmed covid-19 and the US has 148093. There is also a big difference in the gap between China and the US but the difference between the US and Iran, the second and third places in the number of people tested positive for covid-19 is more significantly high.
+
+
+## Conclusion
+
+A worldwide pandemic is now showing its end in the US. COVID-19 cases and deaths in the United States have dropped to their lowest levels in nearly a year, and the number of people vaccinated continues to grow. Over 41.6% of the population is currently vaccinated. The project aims to understand the current worldwide COVID-19 activity and how the virus spread.  From 22 January 2020 to 9 April 2020, the most confirmed case was in China. Going next, the US has the second-highest number of confirmed cases. The first coronavirus case in the US was confirmed on 21 January. Still, the instances surged from the second half of February and further in March as the nationwide testing was increased significantly. Confirmed coronavirus cases in the US rapidly increased due to community spread and delayed testing, which concerned Americans as enough test kits are not available across states. On the other hand, the country that had the most significant number of casualties was the US. Shortage of ventilators continued to result in increased deaths. In addition, on 13 April 2020, Chile showed the most significant confirmed case. Over 10,000 COVID-19 cases were confirmed that day. The radical change in confirmed cases happened on 5 March 2020, Korea. The correlation between variables was found through data analysis, but it doesn't show the trends of how the virus spreads. One clear thing is how the government handles preventive measures against pandemic change in countries' mortality rates. 
+
+## Appendix
+
+```{r,eval=FALSE}
+cov_data <- read.csv("/Users/Bosco/Desktop/SPRING2021/STA 141A/data/COVID-19 Cases.csv")
+head(cov_data)
+#Remove all rows with a single NA or more in its columns.
+cov_clean <- cov_data[complete.cases(cov_data), ]
+print(head(cov_clean))
+cat("Number of rows in original dataset: ",nrow(cov_data), "\n")
+cat("Number of rows in all NA's removed dataset: ",nrow(cov_clean), "\n")
+cov_clean <- subset(cov_data,select=-c(FIPS,Lat,Long))
+library(lmtest)
+# indexing categorical variable
+index= which(cov_clean$Case_Type=="Confirmed") 
+cov_clean$Case_Type [index] = 1
+cov_clean$Case_Type [-index] = 0
+cov_clean$Case_Type <- as.numeric(cov_clean$Case_Type)
+# possible outlier
+md <- mahalanobis(cov_clean[,1:3], center = colMeans(cov_clean[,1:3]), cov = cov(cov_clean[,1:3]))
+alpha <- .01
+cutoff <- (qchisq(p = 1 - alpha, df = ncol(cov_clean)))
+names_outliers_MH <- which(md > cutoff)
+cov_clean <- cov_clean[-names_outliers_MH,]
+cov_clean
+# separating the dataset into deaths and confirmed cases
+cov_deaths <- cov_clean[cov_clean$Case_Type==1, ]
+cov_deaths
+cov_confirm <- cov_clean[cov_clean$Case_Type==0, ]
+# diagnostic
+model=lm(Difference~Case_Type+Cases,data=cov_clean)
+par(mfrow=c(2,2))
+plot1=plot(model)
+bptest(model)
+library(dplyr)
+library(ggplot2)
+cov_deaths_numeric <- select_if(cov_deaths, is.numeric)
+cov_confirm_numeric <- select_if(cov_confirm, is.numeric)
+corr_deaths <- round(cor(cov_deaths_numeric),2)
+corr_deaths
+corr_confirm <- round(cor(cov_confirm_numeric),2)
+corr_confirm
+library(rlang)
+library(dplyr)
+install.packages("ggbiplot")
+pca.death=princomp(x = cov_deaths_numeric, cor = TRUE,scores = TRUE)
+pca.death
+summary(pca.death, loadings = TRUE, cutoff = 0.2)
+pca.confirm=princomp(x = cov_confirm_numeric,scores = TRUE)
+summary(pca.confirm, loadings = TRUE, cutoff = 0.2)
+summary(model)
+# when is the largest case occurred
+cov_clean$Date[which.max(cov_clean$Cases)]
+cov_clean$Country_Region[which.max(cov_clean$Cases)]
+# when is the biggest out break occurred
+cov_clean$Date[which.max(cov_clean$Difference)]
+cov_clean$Country_Region[which.max(cov_clean$Difference)]
+# How many people died and confirmed in each country
+peopld=aggregate(cov_deaths$Cases, list(cov_deaths$Country_Region), sum)
+peopld[order(peopld$x,decreasing = TRUE),]
+peoplc=aggregate(cov_confirm$Cases, list(cov_confirm$Country_Region), sum)
+peoplc[order(peoplc$x,decreasing = TRUE),]
+```
